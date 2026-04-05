@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: flask-app
+  namespace: flask-app
   labels:
     app: flask-app
     version: "1.0"
@@ -23,8 +24,8 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1001
-        fsGroup: 1001
+        runAsUser: 10000
+        fsGroup: 10000
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -35,15 +36,15 @@ spec:
             - containerPort: 5000
               protocol: TCP
           env:
+            - name: RATE_LIMIT
+              value: "60"
+            - name: RATE_WINDOW
+              value: "60"
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
                   name: flask-app-secret
                   key: api-key
-            - name: RATE_LIMIT
-              value: "60"
-            - name: RATE_WINDOW
-              value: "60"
           resources:
             requests:
               memory: "64Mi"
