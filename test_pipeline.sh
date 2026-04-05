@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────
-# test_pipeline.sh — Teste chaque outil de sécurité sur les fichiers
-# intentionnellement vulnérables et vérifie qu'ils détectent bien.
+# test_pipeline.sh — Teste chaque outil de sécurité pour l'application
+# principale et vérifie qu'il n'y a pas d'erreurs inattendues.
 #
 # Usage : bash test_pipeline.sh
 # ─────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ install_tools() {
 
 echo ""
 echo "══════════════════════════════════════════════════"
-echo "  TEST DU PIPELINE — fichiers vulnérables"
+echo "  TEST DU PIPELINE — application principale"
 echo "══════════════════════════════════════════════════"
 echo ""
 
@@ -75,17 +75,17 @@ fi
 echo ""
 echo -e "${YELLOW}[2/7] Bandit — SAST Python${NC}"
 set +e
-bandit app/app_vulnerable.py -f screen 2>&1; exit_code=$?
+bandit app/app.py -f screen 2>&1; exit_code=$?
 set -e
-check "Bandit" 1 "$exit_code"
+check "Bandit" 0 "$exit_code"
 
 # ─── 3. Safety CLI — CVE dans les dépendances${NC}
 echo ""
 echo -e "${YELLOW}[3/7] Safety CLI — CVE dans les dépendances${NC}"
 set +e
-PYTHONUTF8=1 PYTHONIOENCODING=utf-8 safety scan -r app/requirements_vulnerable.txt 2>&1; exit_code=$?
+PYTHONUTF8=1 PYTHONIOENCODING=utf-8 safety scan -r app/requirements.txt 2>&1; exit_code=$?
 set -e
-check "Safety CLI" 1 "$exit_code"
+check "Safety CLI" 0 "$exit_code"
 
 # ─── 4. Semgrep — SAST multi-langage${NC}
 echo ""
@@ -95,23 +95,23 @@ semgrep scan \
     --config "p/python" \
     --config "p/owasp-top-ten" \
     --config "p/secrets" \
-    app/app_vulnerable.py 2>&1; exit_code=$?
+    app/app.py 2>&1; exit_code=$?
 set -e
-check "Semgrep" 1 "$exit_code"
+check "Semgrep" 0 "$exit_code"
 
 # ─── 5. Hadolint — Dockerfile lint${NC}
 echo ""
 echo -e "${YELLOW}[5/7] Hadolint — Dockerfile lint${NC}"
 if command -v hadolint &>/dev/null; then
     set +e
-    hadolint app/Dockerfile.vulnerable 2>&1; exit_code=$?
+    hadolint app/Dockerfile 2>&1; exit_code=$?
     set -e
-    check "Hadolint" 1 "$exit_code"
+    check "Hadolint" 0 "$exit_code"
 elif command -v docker &>/dev/null; then
     set +e
-    docker run --rm -i hadolint/hadolint < app/Dockerfile.vulnerable 2>&1; exit_code=$?
+    docker run --rm -i hadolint/hadolint < app/Dockerfile 2>&1; exit_code=$?
     set -e
-    check "Hadolint (Docker)" 1 "$exit_code"
+    check "Hadolint (Docker)" 0 "$exit_code"
 else
     echo "      → Hadolint non disponible, skip"
 fi
@@ -120,25 +120,25 @@ fi
 echo ""
 echo -e "${YELLOW}[6/7] Checkov — scan IaC Kubernetes${NC}"
 set +e
-checkov -f k8s/deployment_vulnerable.yaml --framework kubernetes 2>&1; exit_code=$?
+checkov -f k8s/deployment.yaml --framework kubernetes 2>&1; exit_code=$?
 set -e
-check "Checkov" 1 "$exit_code"
+check "Checkov" 0 "$exit_code"
 
 # ─── 7. Trivy — scan image container${NC}"
 echo ""
 echo -e "${YELLOW}[7/7] Trivy — scan image container${NC}"
 if command -v docker &>/dev/null; then
-    echo "  Construction de l'image vulnérable..."
-    docker build -f app/Dockerfile.vulnerable -t flask-vulnerable:test ./app 2>&1
+    echo "  Construction de l'image..."
+    docker build -f app/Dockerfile -t flask-app:test ./app 2>&1
     set +e
     if command -v trivy &>/dev/null; then
-        trivy image flask-vulnerable:test --severity HIGH,CRITICAL 2>&1; exit_code=$?
+        trivy image flask-app:test --severity HIGH,CRITICAL 2>&1; exit_code=$?
     else
-        docker run --rm aquasecurity/trivy:latest image --severity HIGH,CRITICAL flask-vulnerable:test 2>&1; exit_code=$?
+        docker run --rm aquasecurity/trivy:latest image --severity HIGH,CRITICAL flask-app:test 2>&1; exit_code=$?
     fi
     set -e
-    check "Trivy" 1 "$exit_code"
-    docker rmi flask-vulnerable:test 2>/dev/null || true
+    check "Trivy" 0 "$exit_code"
+    docker rmi flask-app:test 2>/dev/null || true
 else
     echo "      → Docker non disponible, skip"
 fi

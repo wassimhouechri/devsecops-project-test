@@ -1,8 +1,0 @@
-# ⚠️  FICHIER DE TEST UNIQUEMENT
-# Versions intentionnellement obsolètes pour déclencher Safety CLI et Trivy
-
-flask==2.0.1          # CVE-2023-30861 (session cookie non protégé)
-werkzeug==2.0.1       # CVE-2023-25577 (DoS via headers malformés)
-jinja2==3.0.1         # CVE-2024-22195 (XSS via filtres)
-requests==2.27.1      # CVE-2023-32681 (fuite de credentials via redirect)
-cryptography==38.0.1  # plusieurs CVEs critiques

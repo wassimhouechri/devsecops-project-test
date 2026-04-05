@@ -42,7 +42,7 @@ jobs:
             -f json \
             -o bandit-report.json \
             -ll \
-            --exclude app/tests,app/app_vulnerable.py \
+            --exclude app/tests \
             --severity-level MEDIUM
 
       - name: Semgrep — OWASP + custom rules
