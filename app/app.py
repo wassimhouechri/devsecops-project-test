@@ -51,7 +51,14 @@ def rate_limited(f):
 
 
 # ─── API Key Auth (read from env, never hardcoded) ───
-API_KEY = os.environ.get("API_KEY", "")
+# Lecture de la clé API depuis un fichier secret (meilleure pratique)
+API_KEY_FILE = "/secrets/api-key"
+API_KEY = ""
+if os.path.exists(API_KEY_FILE):
+    with open(API_KEY_FILE, "r") as f:
+        API_KEY = f.read().strip()
+else:
+    API_KEY = os.environ.get("API_KEY", "")
 
 def require_api_key(f):
     @wraps(f)

@@ -40,11 +40,11 @@ spec:
               value: "60"
             - name: RATE_WINDOW
               value: "60"
-            - name: API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: flask-app-secret
-                  key: api-key
+          # API_KEY monté en fichier (recommandé par Checkov)
+          volumeMounts:
+            - name: secret-volume
+              mountPath: "/secrets"
+              readOnly: true
           resources:
             requests:
               memory: "64Mi"
@@ -71,5 +71,9 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: secret-volume
+          secret:
+            secretName: flask-app-secret
       imagePullSecrets:
         - name: ghcr-secret
