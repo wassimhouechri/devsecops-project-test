@@ -47,7 +47,6 @@ jobs:
       - name: Semgrep — OWASP + custom rules
         run: |
           semgrep scan \
-            --config ".semgrep.yml" \
             --config "p/python" \
             --config "p/owasp-top-ten" \
             --config "p/secrets" \
