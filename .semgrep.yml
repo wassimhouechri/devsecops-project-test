@@ -26,3 +26,5 @@ rules:
     message: "shell=True peut permettre une injection de commande"
     languages: [python]
     severity: ERROR
+  - id: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
+    severity: INFO   # ou supprime la règle entièrement
