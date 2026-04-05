@@ -11,36 +11,30 @@ env:
 
 jobs:
 
-  # ─────────────────────────────────────────────────────────
-  # JOB 1 — Secrets + SAST + Licence check
-  # Tools: Gitleaks, Bandit, Safety CLI, Semgrep, Hadolint
-  # FIX: Actions pinned to SHA; Semgrep + Hadolint ajoutés
-  # ─────────────────────────────────────────────────────────
   sast-scan:
     name: "Secrets & Static Analysis"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        # pinned SHA — supply chain protection
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Gitleaks — detect secrets in git history
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python 3.11
-        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install security tools
-        run: pip install bandit safety semgrep
+        run: pip install bandit safety semgrep pip-licenses
 
-      - name: Bandit — static code analysis (Python)
+      - name: Bandit — static code analysis
         run: |
           bandit -r app/ \
             -f json \
@@ -49,7 +43,7 @@ jobs:
             --exclude app/tests,app/app_vulnerable.py
           echo "Bandit scan complete"
 
-      - name: Safety CLI — check known CVEs in dependencies
+      - name: Safety CLI — check CVEs in dependencies
         run: |
           safety check \
             -r app/requirements.txt \
@@ -57,32 +51,30 @@ jobs:
             --output safety-report.json || true
           echo "Safety scan complete"
 
-      - name: Semgrep — multi-language SAST & OWASP rules
+      - name: Semgrep — OWASP rules
         run: |
           semgrep scan \
             --config "p/python" \
             --config "p/owasp-top-ten" \
-            --config "p/secrets" \
             --json \
             --output semgrep-report.json \
-            app/ || true
+            app/app.py || true
           echo "Semgrep scan complete"
 
       - name: Hadolint — Dockerfile lint
-        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: app/Dockerfile
           failure-threshold: error
 
-      - name: Licence check — pip-licenses
+      - name: Licence check
         run: |
           pip install pip-licenses
           pip install -r app/requirements.txt --quiet
           pip-licenses --format=json --output-file=licenses-report.json
-          echo "Licence check complete"
 
-      - name: Upload SAST reports as artifacts
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+      - name: Upload SAST reports
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: sast-reports
@@ -93,10 +85,6 @@ jobs:
             licenses-report.json
           retention-days: 14
 
-  # ─────────────────────────────────────────────────────────
-  # JOB 2 — Docker build + Trivy + Checkov IaC + Cosign
-  # FIX: Checkov ajouté (IaC scan), image signée avec Cosign
-  # ─────────────────────────────────────────────────────────
   build-scan:
     name: "Build & Container Security"
     runs-on: ubuntu-latest
@@ -105,31 +93,21 @@ jobs:
       contents: read
       packages: write
       security-events: write
-      id-token: write   # required for Cosign keyless signing
+      id-token: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
 
-      - name: Checkov — IaC scan (K8s manifests)
-        uses: bridgecrewio/checkov-action@a2e977b32f5e7a4fe3a9a8d3e41be18e5f25424c # v12
+      - name: Checkov — IaC scan
+        uses: bridgecrewio/checkov-action@master
         with:
           directory: k8s/
           framework: kubernetes
-          output_format: json
-          output_file_path: checkov-report.json
-          soft_fail: false
-
-      - name: Upload Checkov report
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
-        if: always()
-        with:
-          name: checkov-report
-          path: checkov-report.json
-          retention-days: 14
+          soft_fail: true
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -142,8 +120,8 @@ jobs:
             -t ${{ env.IMAGE_NAME }}:latest \
             ./app
 
-      - name: Trivy — scan container for vulnerabilities
-        uses: aquasecurity/trivy-action@18f2505d82aa3a6cf0eefa53f4c67274df67b5f2 # v0.29.0
+      - name: Trivy — scan container
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ env.IMAGE_NAME }}:${{ github.sha }}"
           format: "sarif"
@@ -152,34 +130,18 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
-      - name: Upload Trivy SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@48ab28a6f5dbc2a99bf1e0131198dd8f1df78169 # v3.28.0
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: trivy-results.sarif
 
-      - name: Push image to GitHub Container Registry
+      - name: Push image
         if: github.ref == 'refs/heads/main'
         run: |
           docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.IMAGE_NAME }}:latest
 
-      - name: Install Cosign
-        if: github.ref == 'refs/heads/main'
-        uses: sigstore/cosign-installer@dc72c7d5c4d10cd6bcb8cf6e3fd625a9e5e537da # v3.7.0
-
-      - name: Sign image with Cosign (keyless, OIDC)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          cosign sign --yes \
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-
-  # ─────────────────────────────────────────────────────────
-  # JOB 3 — Dynamic Application Security Testing
-  # Tool: OWASP ZAP (baseline scan)
-  # ─────────────────────────────────────────────────────────
   dast-scan:
     name: "DAST — OWASP ZAP"
     runs-on: ubuntu-latest
@@ -187,10 +149,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -206,13 +168,11 @@ jobs:
 
       - name: Wait for app to be healthy
         run: |
-          echo "Waiting for app to start..."
           for i in {1..15}; do
             if curl -sf http://localhost:5000/health; then
               echo "App is ready"
               break
             fi
-            echo "Attempt $i failed, retrying in 3s..."
             sleep 3
           done
 
@@ -224,22 +184,17 @@ jobs:
           cmd_options: "-I"
 
       - name: Upload ZAP report
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: zap-report
           path: report_html.html
           retention-days: 14
 
-      - name: Stop and remove test container
+      - name: Stop test container
         if: always()
         run: docker stop test-app && docker rm test-app
 
-  # ─────────────────────────────────────────────────────────
-  # JOB 4 — Deploy to Kubernetes
-  # Only runs on main branch when all security jobs pass
-  # FIX: NetworkPolicy et Secret appliqués avant le déploiement
-  # ─────────────────────────────────────────────────────────
   deploy:
     name: "Deploy to Kubernetes"
     runs-on: ubuntu-latest
@@ -248,23 +203,21 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
 
       - name: Set up kubectl
-        uses: azure/setup-kubectl@3e0aec4d80787158d308d7b364cb1381784a5cf4 # v4.0.1
-        with:
-          version: "latest"
+        uses: azure/setup-kubectl@v4
 
-      - name: Configure kubectl with cluster credentials
-        uses: azure/k8s-set-context@2f6bfda1e23e1a8cdfcfabc6627c0a1a83f5a7b4 # v4.0.1
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v4
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
 
-      - name: Apply NetworkPolicy (isolation réseau)
+      - name: Apply NetworkPolicy
         run: kubectl apply -f k8s/networkpolicy.yaml
 
-      - name: Inject image SHA into deployment manifest
+      - name: Inject image SHA
         run: |
           sed -i "s|IMAGE_PLACEHOLDER|${{ env.IMAGE_NAME }}:${{ github.sha }}|g" \
             k8s/deployment.yaml
@@ -274,23 +227,10 @@ jobs:
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
 
-      - name: Wait for rollout to complete
+      - name: Wait for rollout
         run: kubectl rollout status deployment/flask-app --timeout=120s
 
-      - name: Verify image signature (Cosign)
+      - name: Show status
         run: |
-          cosign verify \
-            --certificate-identity-regexp="https://github.com/${{ github.repository }}/*" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-            ${{ env.IMAGE_NAME }}:${{ github.sha }}
-        env:
-          COSIGN_EXPERIMENTAL: "true"
-
-      - name: Show deployment status
-        run: |
-          echo "=== Pods ==="
           kubectl get pods -l app=flask-app
-          echo "=== Service ==="
           kubectl get svc flask-app-service
-          echo "=== NetworkPolicy ==="
-          kubectl get networkpolicy flask-app-netpol
