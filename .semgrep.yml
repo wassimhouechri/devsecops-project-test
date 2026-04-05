@@ -9,11 +9,14 @@ rules:
 
   - id: no-hardcoded-secret
     patterns:
-      - pattern: |
-          $KEY = "..."
-      - metavariable-regex:
-          metavariable: $KEY
-          regex: '(?i)(password|secret|api_key|token)'
+      - pattern: $KEY = "..."
+    metavariable-regex:
+      metavariable: $KEY
+      regex: '(?i)(password|secret|api[_-]key|token|key|credential)'
+    metavariable-pattern:
+      metavariable: $KEY
+      patterns:
+        - pattern-not-regex: '^(DEBUG|VERSION|ENV|MODE)$'  # exclure faux positifs courants
     message: "Secret potentiellement hardcodé — utiliser os.environ.get() à la place"
     languages: [python]
     severity: WARNING

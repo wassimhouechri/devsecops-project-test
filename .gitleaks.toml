@@ -6,5 +6,8 @@ description = "Allowlist for test and example files"
 paths = [
   '''tests/''',
   '''README.md''',
-  '''k8s/secret.yaml'''  # placeholder only, never real secrets
+  '''k8s/secret.yaml''',
+  '''app/app_vulnerable.py''',
+  '''app/Dockerfile\.vulnerable''',
+  '''app/requirements_vulnerable\.txt'''
 ]

@@ -1,4 +1,8 @@
 # hadolint ignore=DL3008
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 FROM python:3.11-slim
 
 # Metadata labels
