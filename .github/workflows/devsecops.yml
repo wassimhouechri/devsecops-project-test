@@ -41,7 +41,6 @@ jobs:
           bandit -r app/ \
             -f json \
             -o bandit-report.json \
-            -ll \
             --exclude app/tests \
             --severity-level medium
 

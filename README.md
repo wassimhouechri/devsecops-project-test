@@ -142,7 +142,7 @@ Puis : `GitHub repo → Actions` pour suivre l'exécution.
 pip install bandit safety semgrep pip-licenses
 
 # Bandit — SAST Python
-bandit -r app/ -ll
+bandit -r app/ --severity-level medium
 
 # Safety — CVE dans les dépendances
 safety check -r app/requirements.txt
