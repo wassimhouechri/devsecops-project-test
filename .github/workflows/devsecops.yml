@@ -58,8 +58,7 @@ jobs:
         run: |
           safety check \
             -r app/requirements.txt \
-            --json \
-            --output safety-report.json
+            --json > safety-report.json
           echo "Safety scan complete"
 
       - name: Hadolint — Dockerfile lint
