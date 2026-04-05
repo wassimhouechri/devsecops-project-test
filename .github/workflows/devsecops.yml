@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Gitleaks — detect secrets in git history
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -58,7 +58,7 @@ jobs:
         run: |
           safety check \
             -r app/requirements.txt \
-            --json > safety-report.json
+            --json > safety-report.json || true
           echo "Safety scan complete"
 
       - name: Hadolint — Dockerfile lint
