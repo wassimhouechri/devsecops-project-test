@@ -5,6 +5,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/devsecops-project
@@ -42,8 +43,7 @@ jobs:
             -o bandit-report.json \
             -ll \
             --exclude app/tests,app/app_vulnerable.py \
-            --severity-level MEDIUM || true
-          echo "Bandit scan completed (exit code ignored for reporting)"
+            --severity-level MEDIUM
 
       - name: Semgrep — OWASP + custom rules
         run: |
@@ -54,25 +54,15 @@ jobs:
             --config "p/secrets" \
             --json \
             --output semgrep-report.json \
-            app/ || true
+            app/
 
       - name: Safety CLI — check CVEs in dependencies
         run: |
           safety check \
             -r app/requirements.txt \
             --json \
-            --output safety-report.json || true
+            --output safety-report.json
           echo "Safety scan complete"
-
-      - name: Semgrep — OWASP rules
-        run: |
-          semgrep scan \
-            --config "p/python" \
-            --config "p/owasp-top-ten" \
-            --json \
-            --output semgrep-report.json \
-            app/app.py || true
-          echo "Semgrep scan complete"
 
       - name: Hadolint — Dockerfile lint
         uses: hadolint/hadolint-action@v3.1.0
@@ -186,10 +176,12 @@ jobs:
           for i in {1..15}; do
             if curl -sf http://localhost:5000/health; then
               echo "App is ready"
-              break
+              exit 0
             fi
             sleep 3
           done
+          echo "App did not become healthy in time"
+          exit 1
 
       - name: OWASP ZAP — baseline scan
         uses: zaproxy/action-baseline@v0.12.0
@@ -203,7 +195,7 @@ jobs:
         if: always()
         with:
           name: zap-report
-          path: report_html.html
+          path: report.html
           retention-days: 14
 
       - name: Stop test container

@@ -5,7 +5,9 @@
 FROM python:3.8
 
 # Hadolint DL3008 : apt-get sans --no-install-recommends
-RUN apt-get update && apt-get install -y curl vim netcat
+# Ce Dockerfile est un fichier de test vulnérable : on conserve une commande apt dangereuse.
+# En local, le réseau peut bloquer la récupération des paquets, donc on continue même en cas d'échec.
+RUN apt-get update && apt-get install -y --no-install-recommends curl vim netcat-openbsd || true
 
 # Secret hardcodé dans l'image (visible dans docker inspect)
 ENV DB_PASSWORD="admin123"

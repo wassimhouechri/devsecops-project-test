@@ -15,6 +15,7 @@ NC='\033[0m'
 
 PASS=0
 FAIL=0
+VENV_DIR=".venv-test-pipeline"
 
 check() {
     local tool="$1"
@@ -33,55 +34,83 @@ check() {
     fi
 }
 
+create_venv() {
+    if [ ! -d "$VENV_DIR" ]; then
+        python -m venv "$VENV_DIR"
+    fi
+}
+
+activate_venv() {
+    # shellcheck disable=SC1091
+    source "$VENV_DIR/bin/activate"
+}
+
+install_tools() {
+    pip install --upgrade pip setuptools wheel >/dev/null
+    pip install bandit safety semgrep checkov >/dev/null
+}
+
 echo ""
 echo "══════════════════════════════════════════════════"
 echo "  TEST DU PIPELINE — fichiers vulnérables"
 echo "══════════════════════════════════════════════════"
 echo ""
 
+create_venv
+activate_venv
+install_tools
+
 # ─── 1. Gitleaks ───────────────────────────────────────
 echo -e "${YELLOW}[1/7] Gitleaks — détection de secrets${NC}"
-pip install gitleaks 2>/dev/null || true
+# Gitleaks n'est pas installé avec pip ; installez-le manuellement si besoin.
+# Exemple : go install github.com/zricethezav/gitleaks/v8@latest
 if command -v gitleaks &>/dev/null; then
     gitleaks detect --source . --verbose 2>&1 || exit_code=$?
     check "Gitleaks" 1 "${exit_code:-0}"
 else
-    echo "      → Gitleaks non installé, skip (utiliser via GitHub Actions)"
+    echo "      → Gitleaks non installé, skip (utiliser via GitHub Actions ou installer localement)"
 fi
 
 # ─── 2. Bandit ─────────────────────────────────────────
 echo ""
 echo -e "${YELLOW}[2/7] Bandit — SAST Python${NC}"
-pip install bandit -q
-bandit app/app_vulnerable.py -f text 2>&1; exit_code=$?
+set +e
+bandit app/app_vulnerable.py -f screen 2>&1; exit_code=$?
+set -e
 check "Bandit" 1 "$exit_code"
 
-# ─── 3. Safety CLI ─────────────────────────────────────
+# ─── 3. Safety CLI — CVE dans les dépendances${NC}
 echo ""
 echo -e "${YELLOW}[3/7] Safety CLI — CVE dans les dépendances${NC}"
-pip install safety -q
-safety check -r app/requirements_vulnerable.txt 2>&1; exit_code=$?
+set +e
+PYTHONUTF8=1 PYTHONIOENCODING=utf-8 safety scan -r app/requirements_vulnerable.txt 2>&1; exit_code=$?
+set -e
 check "Safety CLI" 1 "$exit_code"
 
-# ─── 4. Semgrep ────────────────────────────────────────
+# ─── 4. Semgrep — SAST multi-langage${NC}
 echo ""
 echo -e "${YELLOW}[4/7] Semgrep — SAST multi-langage${NC}"
-pip install semgrep -q
+set +e
 semgrep scan \
     --config "p/python" \
     --config "p/owasp-top-ten" \
     --config "p/secrets" \
     app/app_vulnerable.py 2>&1; exit_code=$?
+set -e
 check "Semgrep" 1 "$exit_code"
 
-# ─── 5. Hadolint ───────────────────────────────────────
+# ─── 5. Hadolint — Dockerfile lint${NC}
 echo ""
 echo -e "${YELLOW}[5/7] Hadolint — Dockerfile lint${NC}"
 if command -v hadolint &>/dev/null; then
+    set +e
     hadolint app/Dockerfile.vulnerable 2>&1; exit_code=$?
+    set -e
     check "Hadolint" 1 "$exit_code"
 elif command -v docker &>/dev/null; then
+    set +e
     docker run --rm -i hadolint/hadolint < app/Dockerfile.vulnerable 2>&1; exit_code=$?
+    set -e
     check "Hadolint (Docker)" 1 "$exit_code"
 else
     echo "      → Hadolint non disponible, skip"
@@ -90,17 +119,24 @@ fi
 # ─── 6. Checkov — IaC K8s ──────────────────────────────
 echo ""
 echo -e "${YELLOW}[6/7] Checkov — scan IaC Kubernetes${NC}"
-pip install checkov -q
+set +e
 checkov -f k8s/deployment_vulnerable.yaml --framework kubernetes 2>&1; exit_code=$?
+set -e
 check "Checkov" 1 "$exit_code"
 
-# ─── 7. Trivy ──────────────────────────────────────────
+# ─── 7. Trivy — scan image container${NC}"
 echo ""
 echo -e "${YELLOW}[7/7] Trivy — scan image container${NC}"
 if command -v docker &>/dev/null; then
     echo "  Construction de l'image vulnérable..."
     docker build -f app/Dockerfile.vulnerable -t flask-vulnerable:test ./app 2>&1
-    trivy image flask-vulnerable:test --severity HIGH,CRITICAL 2>&1; exit_code=$?
+    set +e
+    if command -v trivy &>/dev/null; then
+        trivy image flask-vulnerable:test --severity HIGH,CRITICAL 2>&1; exit_code=$?
+    else
+        docker run --rm aquasecurity/trivy:latest image --severity HIGH,CRITICAL flask-vulnerable:test 2>&1; exit_code=$?
+    fi
+    set -e
     check "Trivy" 1 "$exit_code"
     docker rmi flask-vulnerable:test 2>/dev/null || true
 else
