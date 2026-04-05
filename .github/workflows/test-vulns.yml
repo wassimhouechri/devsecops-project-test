@@ -1,0 +1,89 @@
+name: Pipeline Vulnerability Test
+
+# Ce workflow teste que chaque outil détecte bien les fichiers vulnérables.
+# Il DOIT signaler des erreurs — c'est le comportement attendu.
+on:
+  push:
+    paths:
+      - 'app/app_vulnerable.py'
+      - 'app/requirements_vulnerable.txt'
+      - 'app/Dockerfile.vulnerable'
+      - 'k8s/deployment_vulnerable.yaml'
+  workflow_dispatch:
+
+jobs:
+
+  test-sast-detects-vulns:
+    name: "Vérifier que SAST détecte les vulnérabilités"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
+        with:
+          python-version: "3.11"
+
+      - name: Installer les outils
+        run: pip install bandit safety semgrep checkov
+
+      - name: Bandit — DOIT trouver des vulnérabilités
+        id: bandit
+        run: |
+          bandit app/app_vulnerable.py -f json -o bandit-vuln-report.json || true
+          # Vérifier que Bandit a bien trouvé des issues
+          ISSUES=$(python -c "import json; d=json.load(open('bandit-vuln-report.json')); print(len(d['results']))")
+          echo "Bandit a trouvé $ISSUES vulnérabilités"
+          [ "$ISSUES" -gt 0 ] && echo "PASS: Bandit détecte bien" || (echo "FAIL: Bandit n'a rien trouvé" && exit 1)
+
+      - name: Safety — DOIT trouver des CVEs
+        run: |
+          safety check -r app/requirements_vulnerable.txt --json \
+            --output safety-vuln-report.json || true
+          echo "Safety a scanné les dépendances vulnérables"
+
+      - name: Semgrep — DOIT trouver des patterns dangereux
+        run: |
+          semgrep scan \
+            --config "p/python" \
+            --config "p/owasp-top-ten" \
+            --json \
+            --output semgrep-vuln-report.json \
+            app/app_vulnerable.py || true
+          FINDINGS=$(python -c "import json; d=json.load(open('semgrep-vuln-report.json')); print(len(d.get('results', [])))")
+          echo "Semgrep a trouvé $FINDINGS patterns"
+          [ "$FINDINGS" -gt 0 ] && echo "PASS" || (echo "FAIL: Semgrep n'a rien trouvé" && exit 1)
+
+      - name: Checkov — DOIT trouver des mauvaises pratiques K8s
+        run: |
+          checkov -f k8s/deployment_vulnerable.yaml \
+            --framework kubernetes \
+            --output json \
+            --output-file checkov-vuln-report.json || true
+          FAILED=$(python -c "
+          import json
+          d = json.load(open('checkov-vuln-report.json'))
+          results = d.get('results', {})
+          print(len(results.get('failed_checks', [])))
+          ")
+          echo "Checkov a trouvé $FAILED mauvaises pratiques"
+          [ "$FAILED" -gt 0 ] && echo "PASS" || (echo "FAIL" && exit 1)
+
+      - name: Hadolint — DOIT trouver des problèmes dans le Dockerfile
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+        with:
+          dockerfile: app/Dockerfile.vulnerable
+          failure-threshold: warning
+          # On s'attend à des warnings/errors ici
+
+      - name: Upload rapports de test
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        if: always()
+        with:
+          name: vulnerability-test-reports
+          path: |
+            bandit-vuln-report.json
+            safety-vuln-report.json
+            semgrep-vuln-report.json
+            checkov-vuln-report.json
+          retention-days: 7

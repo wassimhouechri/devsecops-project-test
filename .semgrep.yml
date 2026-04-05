@@ -1,0 +1,25 @@
+# .semgrep.yml — règles custom pour ce projet
+rules:
+  - id: no-debug-true
+    patterns:
+      - pattern: app.run(..., debug=True, ...)
+    message: "Ne jamais activer debug=True en production (fuite de stack traces)"
+    languages: [python]
+    severity: ERROR
+
+  - id: no-hardcoded-secret
+    patterns:
+      - pattern: |
+          $KEY = "..."
+      - metavariable-regex:
+          metavariable: $KEY
+          regex: '(?i)(password|secret|api_key|token)'
+    message: "Secret potentiellement hardcodé — utiliser os.environ.get() à la place"
+    languages: [python]
+    severity: WARNING
+
+  - id: no-shell-true
+    pattern: subprocess.run(..., shell=True, ...)
+    message: "shell=True peut permettre une injection de commande"
+    languages: [python]
+    severity: ERROR

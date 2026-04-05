@@ -1,0 +1,34 @@
+# ⚠️  FICHIER DE TEST UNIQUEMENT
+# Mauvaises pratiques K8s intentionnelles pour déclencher Checkov
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app-vulnerable
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask-app-vulnerable
+  template:
+    metadata:
+      labels:
+        app: flask-app-vulnerable
+    spec:
+      # CKV_K8S_30 : pas de securityContext → tourne en root
+      # CKV_K8S_43 : image sans tag précis (latest)
+      containers:
+        - name: flask-app
+          image: flask-app:latest
+          # CKV_K8S_28 : pas de limites de ressources
+          # CKV_K8S_11 : CPU limit manquante
+          env:
+            # CKV_K8S_35 : secret en clair dans env (pas de secretKeyRef)
+            - name: DB_PASSWORD
+              value: "admin123"
+            - name: AWS_KEY
+              value: "AKIAIOSFODNN7EXAMPLE"
+          securityContext:
+            # CKV_K8S_16 : allowPrivilegeEscalation non défini
+            # CKV_K8S_25 : capabilities non droppées
+            privileged: true   # ← accès total au nœud K8s !

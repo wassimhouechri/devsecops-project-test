@@ -1,0 +1,28 @@
+# ⚠️  FICHIER DE TEST UNIQUEMENT
+# Mauvaises pratiques intentionnelles pour déclencher Hadolint et Trivy
+
+# Image ancienne avec des centaines de CVEs connus
+FROM python:3.8
+
+# Hadolint DL3008 : apt-get sans --no-install-recommends
+RUN apt-get update && apt-get install -y curl vim netcat
+
+# Secret hardcodé dans l'image (visible dans docker inspect)
+ENV DB_PASSWORD="admin123"
+ENV AWS_SECRET="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+WORKDIR /app
+
+COPY requirements_vulnerable.txt .
+RUN pip install -r requirements_vulnerable.txt
+
+COPY app_vulnerable.py app.py
+
+# Hadolint DL3002 : USER root (aucun utilisateur non-root créé)
+# L'app tourne en root par défaut
+
+EXPOSE 5000
+
+# Pas de HEALTHCHECK
+
+CMD ["python", "app.py"]
