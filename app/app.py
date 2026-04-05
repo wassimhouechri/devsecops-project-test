@@ -5,30 +5,27 @@ import os
 
 app = Flask(__name__)
 
-# ─── Security Headers (CSP, HSTS, X-Frame-Options, etc.) ───
+# ─── Security Headers ───
 @app.after_request
 def set_security_headers(response):
-    response.headers["Content-Security-Policy"] = (
-        "default-src 'none'; frame-ancestors 'none'"
-    )
-    response.headers["Strict-Transport-Security"] = (
-        "max-age=31536000; includeSubDomains"
-    )
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-    # Remove server fingerprint
     response.headers.pop("Server", None)
     return response
 
 
-# ─── Rate Limiting (in-memory, simple token bucket) ───
+# ─── Rate Limiting (simple in-memory) ───
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "60"))
 RATE_WINDOW = int(os.environ.get("RATE_WINDOW", "60"))
 
 _rate_store: dict = {}
 
+# TODO en production : utiliser Redis ou flask-limiter
+# Ce rate limiter ne scale pas avec plusieurs replicas Kubernetes
 def rate_limited(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -36,7 +33,6 @@ def rate_limited(f):
         now = time.time()
         window_start = now - RATE_WINDOW
 
-        # Purge old entries - Bandit peut parfois signaler ceci comme potentiel problème
         if ip in _rate_store:
             _rate_store[ip] = [t for t in _rate_store[ip] if t > window_start]
         else:
@@ -50,21 +46,29 @@ def rate_limited(f):
     return decorated
 
 
-# ─── API Key Auth (read from env, never hardcoded) ───
-# Lecture de la clé API depuis un fichier secret (meilleure pratique)
+# ─── API Key Auth ───
+# Lecture sécurisée depuis un fichier monté par Kubernetes (fix CKV_K8S_35)
+# Le secret est monté en lecture seule dans /secrets/api-key
+
 API_KEY_FILE = "/secrets/api-key"
 API_KEY = ""
+
 if os.path.exists(API_KEY_FILE):
-    with open(API_KEY_FILE, "r") as f:
-        API_KEY = f.read().strip()
+    try:
+        with open(API_KEY_FILE, "r") as f:
+            API_KEY = f.read().strip()
+    except Exception:
+        API_KEY = ""
 else:
+    # Fallback pour le développement local (quand on lance python app.py)
     API_KEY = os.environ.get("API_KEY", "")
+
 
 def require_api_key(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if not API_KEY:
-            # If no key configured, auth is disabled (dev mode)
+            # Si aucune clé n'est configurée → auth désactivée (mode dev)
             return f(*args, **kwargs)
         key = request.headers.get("X-API-Key", "")
         if key != API_KEY:
@@ -92,7 +96,7 @@ def data():
     return jsonify({"data": [1, 2, 3], "count": 3})
 
 
-# ─── Custom error handlers ───
+# ─── Error handlers ───
 @app.errorhandler(401)
 def unauthorized(e):
     return jsonify({"error": "Unauthorized"}), 401
@@ -103,7 +107,6 @@ def too_many_requests(e):
 
 
 if __name__ == "__main__":
-    # Never run debug=True in production
     # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
-    # Reason: This is only used inside Docker container. The app is exposed via Kubernetes Service, not directly to the internet.
+    # Reason: Only used for local testing. In production we use Gunicorn in Docker + Kubernetes.
     app.run(host="0.0.0.0", port=5000, debug=False)

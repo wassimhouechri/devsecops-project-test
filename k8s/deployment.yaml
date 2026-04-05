@@ -40,9 +40,9 @@ spec:
               value: "60"
             - name: RATE_WINDOW
               value: "60"
-          # API_KEY monté en fichier (recommandé par Checkov)
+          # API_KEY monté en volume (fix CKV_K8S_35)
           volumeMounts:
-            - name: secret-volume
+            - name: api-key-secret
               mountPath: "/secrets"
               readOnly: true
           resources:
@@ -72,7 +72,7 @@ spec:
               drop:
                 - ALL
       volumes:
-        - name: secret-volume
+        - name: api-key-secret
           secret:
             secretName: flask-app-secret
       imagePullSecrets:
