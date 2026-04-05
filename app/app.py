@@ -97,4 +97,6 @@ def too_many_requests(e):
 
 if __name__ == "__main__":
     # Never run debug=True in production
+    # nosemgrep: python.flask.security.audit.app-run-param-config.avoid_app_run_with_bad_host
+    # Reason: This is only used inside Docker container. The app is exposed via Kubernetes Service, not directly to the internet.
     app.run(host="0.0.0.0", port=5000, debug=False)
