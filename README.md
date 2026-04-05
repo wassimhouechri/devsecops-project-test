@@ -260,3 +260,4 @@ Charger l'image locale dans minikube :
 ```bash
 minikube image load devsecops-project:local
 ```
+# devsecops-project2
