@@ -23,17 +23,9 @@ def set_security_headers(response):
     return response
 
 
-# ─── Rate Limiting ───
-# IMPORTANT : Ce rate limiter est SIMPLE et fonctionne uniquement pour du test / un seul pod
-# Il utilise un dictionnaire en mémoire (_rate_store) → ne scale PAS en production
-
-RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "60"))   # nombre max de requêtes
-RATE_WINDOW = int(os.environ.get("RATE_WINDOW", "60")) # fenêtre en secondes (ex: 60 = 1 minute)
-
-# TODO en production : utiliser Redis ou un rate limiter distribué
-# Recommandation : flask-limiter + Redis (ou RedisRateLimiter)
-# Le dict en mémoire ne fonctionne pas avec plusieurs replicas Kubernetes
-# car chaque pod a son propre dictionnaire → un utilisateur peut dépasser la limite en changeant de pod.
+# ─── Rate Limiting (in-memory, simple token bucket) ───
+RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "60"))
+RATE_WINDOW = int(os.environ.get("RATE_WINDOW", "60"))
 
 _rate_store: dict = {}
 
@@ -44,8 +36,11 @@ def rate_limited(f):
         now = time.time()
         window_start = now - RATE_WINDOW
 
-        # Purge old entries
-        _rate_store[ip] = [t for t in _rate_store.get(ip, []) if t > window_start]
+        # Purge old entries - Bandit peut parfois signaler ceci comme potentiel problème
+        if ip in _rate_store:
+            _rate_store[ip] = [t for t in _rate_store[ip] if t > window_start]
+        else:
+            _rate_store[ip] = []
 
         if len(_rate_store[ip]) >= RATE_LIMIT:
             abort(429)

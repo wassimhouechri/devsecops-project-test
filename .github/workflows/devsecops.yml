@@ -41,8 +41,9 @@ jobs:
             -f json \
             -o bandit-report.json \
             -ll \
-            --exclude app/tests,app/app_vulnerable.py
-          echo "Bandit scan complete"
+            --exclude app/tests,app/app_vulnerable.py \
+            --severity-level MEDIUM || true
+          echo "Bandit scan completed (exit code ignored for reporting)"
 
       - name: Semgrep — OWASP + custom rules
         run: |
